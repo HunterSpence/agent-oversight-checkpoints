@@ -54,7 +54,7 @@ Current systems employ several inadequate strategies:
 
 ### 4.3 What Is Missing
 
-No existing system provides:
+Existing human-in-the-loop systems for AI agents (such as static tool approval gates, per-tool-call approval middleware, and manual escalation rules) provide binary approve/reject decisions based on fixed policies. However, these approaches do not:
 
 1. **Multi-dimensional risk assessment** that considers irreversibility, blast radius, and privilege level as interacting factors
 2. **Dynamic checkpoint placement** that optimizes the trade-off between human interruption cost and safety requirements
@@ -1303,7 +1303,18 @@ Present invention: Fewer but more meaningful checkpoints
 
 ---
 
-## 10. DEFINITIONS
+## 10. TECHNICAL ADVANTAGES AND MEASURABLE IMPROVEMENTS
+
+- Reduced human interruption frequency compared to static approval systems (demonstrated 73-80% checkpoint reduction in examples)
+- Sub-millisecond risk scoring latency through cached risk models and incremental computation
+- Adaptive threshold convergence through near-miss feedback loop
+- Tamper-evident audit trail via hash-chained decision records
+- Support for both sequential and directed acyclic graph (DAG) workflows
+- Measurable safety guarantee: residual risk between checkpoints provably bounded by risk budget parameter
+
+---
+
+## 11. DEFINITIONS
 
 **Action:** A discrete operation performed by an autonomous AI agent, typically involving interaction with tools, APIs, databases, or external systems. Examples include reading a file, sending an email, executing a financial transaction, or modifying a database record.
 
@@ -1377,7 +1388,7 @@ Present invention: Fewer but more meaningful checkpoints
 
 ---
 
-## 11. ABSTRACT
+## 12. ABSTRACT
 
 A system and method for adaptively placing human oversight checkpoints in autonomous AI agent workflows based on multi-dimensional risk assessment and continuous learning from near-miss events. Each agent action is scored for irreversibility, blast radius, and privilege level, combined into a composite risk metric. Checkpoints are algorithmically placed to minimize human interruptions while ensuring accumulated risk between checkpoints never exceeds a configurable risk budget. The system detects seven types of near-miss events including human interventions, immediate reversals, safety catches, agent self-doubt, delayed incident discoveries, simulation divergences, and statistical anomalies. Weight adjustments proportional to near-miss severity and risk factor attribution enable adaptive threshold learning with temporal decay and stability controls. Architecture comprises policy engine, tool gateway, human approval interface, feedback collector, tamper-evident audit log, and configuration manager supporting sequential and parallel (DAG) workflows. Compared to static oversight approaches, the invention achieves 70-80% reduction in human checkpoints while maintaining or improving safety coverage through strategic, risk-proportional oversight placement.
 
