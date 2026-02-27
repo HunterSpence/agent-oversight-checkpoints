@@ -1066,6 +1066,117 @@ Use attention mechanisms (from deep learning) to identify which action features 
 **50. Meta-Learning for New Domains:**
 When deploying to new domain with limited data, use meta-learning (learning to learn) to quickly adapt risk model from related domains.
 
+### 8.8 Compound Action Aggregation (Anti-Action-Splitting)
+
+**51. Compound Action Aggregation / Anti-Action-Splitting:**
+
+An adversarial or malfunctioning agent could circumvent the risk budget system by splitting a single high-risk action into many smaller sub-actions, each individually falling below the checkpoint threshold.
+
+**Attack Scenario Example:**
+- High-risk action: "Transfer $10,000 to external account" (R = 0.8, exceeds threshold T = 0.4)
+- Split into 100 micro-actions: "Transfer $100 to external account" × 100
+- Each micro-action: R = 0.25 (below threshold)
+- All execute without checkpoints, achieving the same harmful outcome
+
+**Detection and Aggregation Methods:**
+
+1. **Same-Resource Detection:** Actions targeting the same credential, database table, API endpoint, or external recipient within a time window are aggregated into a compound action.
+   - Example: 100 transfers to the same bank account → detected as compound action
+
+2. **Temporal Clustering:** Rapid sequences of similar actions within a configurable time window (default: 5 minutes) are aggregated.
+   - Window size adapts based on typical agent operation tempo
+   - Clustering algorithm: DBSCAN or hierarchical clustering on action feature vectors
+
+3. **Semantic Similarity:** Embedding-based detection of actions with related intents.
+   - Compute semantic embeddings (e.g., via transformer models) for action descriptions
+   - Actions with cosine similarity > threshold (default: 0.85) are candidates for aggregation
+   - Example: "Send email to user1@example.com" and "Send email to user2@example.com" have high semantic similarity
+
+4. **Causal Chain Analysis:** Actions where the output of one feeds the input of another form a dependency chain.
+   - Build directed graph of action dependencies
+   - Connected components in dependency graph are aggregated as compound actions
+   - Example: "Query customer database" → "Filter results" → "Send batch email" form causal chain
+
+**Compound Action Risk Scoring:**
+
+When correlated actions {a₁, a₂, ..., aₖ} are detected as forming a compound action A_compound:
+
+- **Additive Aggregation:** R(A_compound) = Σᵢ R(aᵢ)
+  - Conservative approach treating split actions as fully cumulative
+  
+- **Superlinear Penalty:** R(A_compound) = (Σᵢ R(aᵢ)) × (1 + suspicion_score)
+  - suspicion_score based on:
+    - Number of fragments: more fragments → higher suspicion
+    - Temporal compression: actions executed in rapid succession → higher suspicion
+    - Historical baseline deviation: unusual fragmentation pattern → higher suspicion
+  - Example: suspicion_score = 0.2 × log(k) where k is fragment count
+  
+- **Maximum-Based:** R(A_compound) = max(R(aᵢ)) × k^α
+  - Where α ∈ [0.3, 0.5] provides sublinear scaling
+  - Recognizes that k identical actions should not scale linearly but still compound risk
+
+**Checkpoint Enforcement:**
+
+Once actions are aggregated into compound action:
+1. Compound risk score R(A_compound) is computed before any constituent action executes
+2. If R(A_compound) > T, checkpoint is required before the first constituent action
+3. Human operator sees:
+   - "Compound action detected: 100 transfers totaling $10,000"
+   - Breakdown of constituent actions
+   - Detection method (same-resource / temporal / semantic / causal)
+   - Suspicion score and justification
+
+**Penalty Multipliers for Suspicious Fragmentation:**
+
+Pattern-based multipliers applied when fragmentation appears intentional:
+- **Uniform amounts:** If all fragments have identical or near-identical parameters → 1.5× multiplier
+  - Example: 100× "$100 transfers" triggers uniformity penalty
+- **Just-under-threshold:** If fragment risk scores cluster just below checkpoint threshold → 2.0× multiplier
+  - Example: Actions with R = 0.39 when T = 0.4 (suspiciously precise avoidance)
+- **Temporal bursting:** If action rate suddenly increases 10× over baseline → 1.3× multiplier
+  - Detects "rush to execute before detection"
+- **Parameter permutation:** If actions are identical except for trivial parameter variations (incrementing IDs, rotating through list) → 1.4× multiplier
+
+**Example Implementation:**
+
+```
+Algorithm: CompoundActionDetection
+Input: Action stream A = {a₁, a₂, ...}, time window W, similarity threshold θ
+Output: Compound actions C = {A_compound₁, A_compound₂, ...}
+
+1. For each new action aᵢ:
+2.   Retrieve recent actions within window W: A_recent = {aⱼ : timestamp(aⱼ) > now() - W}
+3.   For each method m ∈ {same-resource, temporal, semantic, causal}:
+4.     candidates_m = detect_correlated(aᵢ, A_recent, method=m)
+5.   candidates = candidates_same-resource ∪ candidates_temporal ∪ candidates_semantic ∪ candidates_causal
+6.   If |candidates| > 1:
+7.     A_compound = candidates ∪ {aᵢ}
+8.     R(A_compound) = aggregate_risk(A_compound)
+9.     suspicion = compute_suspicion(A_compound)
+10.    R_final = R(A_compound) × (1 + suspicion)
+11.    If R_final > T:
+12.      Trigger checkpoint for entire compound action
+13.      Block execution of aᵢ and all pending actions in A_compound
+14.      Present compound action to human operator
+```
+
+**Adaptive Threshold for Aggregation:**
+
+System learns appropriate aggregation sensitivity from feedback:
+- If human operators frequently approve compound actions (>90% approval rate), aggregation may be over-sensitive → reduce similarity threshold θ
+- If near-miss events reveal successful action-splitting attacks, aggregation is under-sensitive → increase θ and reduce time window W
+- Balances false positives (over-aggregation frustrating legitimate workflows) versus false negatives (missing actual circumvention attempts)
+
+**Integration with Near-Miss Learning:**
+
+New near-miss type:
+- **Type 8: Action-Splitting Detection:** When post-hoc analysis reveals that a sequence of actions should have been aggregated but wasn't
+  - Severity based on total compound risk that bypassed checkpoints
+  - Triggers adjustment of aggregation parameters (θ, W, suspicion multipliers)
+  - Example: Incident analysis shows agent executed 50× small database deletions that should have been detected as compound action
+
+This embodiment closes the most obvious design-around of the risk budget system, ensuring that oversight cannot be circumvented through action fragmentation.
+
 ---
 
 ## 9. IMPLEMENTATION EXAMPLES
@@ -1310,7 +1421,7 @@ Present invention: Fewer but more meaningful checkpoints
 - Adaptive threshold convergence through near-miss feedback loop
 - Tamper-evident audit trail via hash-chained decision records
 - Support for both sequential and directed acyclic graph (DAG) workflows
-- Measurable safety guarantee: residual risk between checkpoints provably bounded by risk budget parameter
+- Measurable safety guarantee: residual risk between checkpoints bounded according to the computed risk model by the risk budget parameter
 
 ---
 
@@ -1406,8 +1517,8 @@ A system and method for adaptively placing human oversight checkpoints in autono
 - **Recommended Next Steps:**
   1. Review document for accuracy and completeness
   2. Prepare formal USPTO cover sheet (Form SB/16)
-  3. File electronically via USPTO EFS-Web or patent attorney
-  4. Pay provisional application filing fee (currently $300 for large entity, $150 for small entity, $75 for micro entity)
+  3. File electronically via USPTO Patent Center or patent attorney
+  4. Pay provisional application filing fee (currently $300 for large entity, $150 for small entity, $65 for micro entity)
   4. Note filing date for 12-month non-provisional deadline
   5. Consider international filing strategy (PCT application within 12 months if international protection desired)
 
